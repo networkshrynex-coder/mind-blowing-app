@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mind Blowing - Collaborative Mind Mapping</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+            height: 100vh;
+            overflow: hidden;
+            color: #fff;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(to right, #ff7e5f, #feb47b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .toolbar button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toolbar button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .toolbar button:active {
+            transform: translateY(0);
+        }
+
+        .toolbar button.active {
+            background: #ff7e5f;
+            border-color: #ff7e5f;
+        }
+
+        .toolbar input, .toolbar select {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .toolbar input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .toolbar input[type="color"] {
+            width: 40px;
+            height: 40px;
+            padding: 2px;
+            cursor: pointer;
+        }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 60px);
+        }
+
+        .sidebar {
+            width: 300px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar h2 {
+            font-size: 20px;
+            margin-bottom: 20px;
+            color: #ff7e5f;
+        }
+
+        .node-list {
+            list-style: none;
+        }
+
+        .node-list li {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-left: 4px solid #ff7e5f;
+        }
+
+        .node-list li:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateX(5px);
+        }
+
+        .node-list li.active {
+            background: rgba(255, 126, 95, 0.3);
+        }
+
+        .node-list .node-text {
+            font-size: 14px;
+            margin-bottom: 5px;
+            word-break: break-word;
+        }
+
+        .node-list .node-meta {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #mindmap-canvas {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            cursor: grab;
+        }
+
+        #mindmap-canvas:active {
+            cursor: grabbing;
+        }
+
+        .node-popup {
+            position: fixed;
+            background: rgba(30, 30, 40, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 20px;
+            z-index: 1000;
+            min-width: 300px;
+            backdrop-filter: blur(10px);
+        }
+
+        .node-popup h3 {
+            margin-bottom: 15px;
+            color: #ff7e5f;
+        }
+
+        .node-popup textarea {
+            width: 100%;
+            height: 100px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            resize: vertical;
+            font-family: inherit;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .node-popup .popup-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #4ade80;
+        }
+
+        .status-dot.disconnected {
+            background: #f87171;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .zoom-controls {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .zoom-controls button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">🧠 Mind Blowing</div>
+        <div class="toolbar">
+            <input type="text" id="mindmap-name" placeholder="Enter mind map name...">
+            <button id="create-mindmap-btn">Create</button>
+            <button id="load-mindmap-btn">Load</button>
+            <button id="save-mindmap-btn">Save</button>
+            <button id="export-pdf-btn">Export PDF</button>
+            <button id="tts-btn">🔊 Read Aloud</button>
+            <button id="github-save-btn">💾 Save to GitHub</button>
+            <select id="tool-select">
+                <option value="select">Select</option>
+                <option value="add-node">Add Node</option>
+                <option value="add-edge">Connect Nodes</option>
+                <option value="pan">Pan</option>
+            </select>
+            <input type="color" id="node-color" value="#ff7e5f">
+            <div class="connection-status">
+                <div class="status-dot" id="status-dot"></div>
+                <span id="status-text">Connected</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="sidebar">
+            <h2>Nodes</h2>
+            <ul class="node-list" id="node-list">
+                <!-- Nodes will be populated here -->
+            </ul>
+        </div>
+        <div class="canvas-container">
+            <canvas id="mindmap-canvas"></canvas>
+            <div class="zoom-controls">
+                <button id="zoom-in">+</button>
+                <button id="zoom-out">-</button>
+                <button id="zoom-reset">⟲</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="node-popup hidden" id="node-popup">
+        <h3>Edit Node</h3>
+        <textarea id="node-text" placeholder="Enter node text..."></textarea>
+        <div class="popup-buttons">
+            <button id="cancel-edit">Cancel</button>
+            <button id="save-node">Save</button>
+        </div>
+    </div>
+
+    <script>
+        // Mind Map Application
+        class MindMapApp {
+            constructor() {
+                this.canvas = document.getElementById('mindmap-canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.nodes = [];
+                this.edges = [];
+                this.selectedNode = null;
+                this.selectedEdge = null;
+                this.tool = 'select';
+                this.scale = 1;
+                this.offsetX = 0;
+                this.offsetY = 0;
+                this.isDragging = false;
+                this.dragStartX = 0;
+                this.dragStartY = 0;
+                this.draggedNode = null;
+                this.mindMapId = null;
+                this.nodeColor = '#ff7e5f';
+                this.socket = null;
+
+                this.init();
+            }
+
+            init() {
+                this.setupCanvas();
+                this.setupEventListeners();
+                this.setupSocket();
+                this.setupToolbar();
+                this.animate();
+            }
+
+            setupCanvas() {
+                const resizeCanvas = () => {
+                    const rect = this.canvas.getBoundingClientRect();
+                    this.canvas.width = rect.width;
+                    this.canvas.height = rect.height;
+                };
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+            }
+
+            setupSocket() {
+                this.socket = io();
+
+                this.socket.on('connect', () => {
+                    document.getElementById('status-dot').classList.remove('disconnected');
+                    document.getElementById('status-text').textContent = 'Connected';
+                });
+
+                this.socket.on('disconnect', () => {
+                    document.getElementById('status-dot').classList.add('disconnected');
+                    document.getElementById('status-text').textContent = 'Disconnected';
+                });
+
+                this.socket.on('load-mindmap', (mindMap) => {
+                    this.nodes = mindMap.nodes || [];
+                    this.edges = mindMap.edges || [];
+                    this.updateNodeList();
+                });
+
+                this.socket.on('mindmap-updated', (mindMap) => {
+                    this.nodes = mindMap.nodes || [];
+                    this.edges = mindMap.edges || [];
+                    this.updateNodeList();
+                });
+
+                this.socket.on('node-added', (node) => {
+                    this.nodes.push(node);
+                    this.updateNodeList();
+                });
+
+                this.socket.on('node-updated', ({ nodeId, updates }) => {
+                    const index = this.nodes.findIndex(n => n.id === nodeId);
+                    if (index !== -1) {
+                        this.nodes[index] = { ...this.nodes[index], ...updates };
+                        this.updateNodeList();
+                    }
+                });
+
+                this.socket.on('node-deleted', (nodeId) => {
+                    this.nodes = this.nodes.filter(n => n.id !== nodeId);
+                    this.edges = this.edges.filter(e => e.source !== nodeId && e.target !== nodeId);
+                    this.updateNodeList();
+                });
+
+                this.socket.on('edge-added', (edge) => {
+                    this.edges.push(edge);
+                });
+
+                this.socket.on('edge-deleted', (edgeId) => {
+                    this.edges = this.edges.filter(e => e.id !== edgeId);
+                });
+            }
+
+            setupEventListeners() {
+                // Mouse events
+                this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+                this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+                this.canvas.addEventListener('mouseup', () => this.handleMouseUp());
+                this.canvas.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
+
+                // Toolbar events
+                document.getElementById('tool-select').addEventListener('change', (e) => {
+                    this.tool = e.target.value;
+                    this.updateCursor();
+                });
+
+                document.getElementById('node-color').addEventListener('input', (e) => {
+                    this.nodeColor = e.target.value;
+                });
+
+                // Button events
+                document.getElementById('create-mindmap-btn').addEventListener('click', () => this.createMindMap());
+                document.getElementById('load-mindmap-btn').addEventListener('click', () => this.loadMindMap());
+                document.getElementById('save-mindmap-btn').addEventListener('click', () => this.saveMindMap());
+                document.getElementById('export-pdf-btn').addEventListener('click', () => this.exportPDF());
+                document.getElementById('tts-btn').addEventListener('click', () => this.readAloud());
+                document.getElementById('github-save-btn').addEventListener('click', () => this.saveToGitHub());
+
+                // Zoom controls
+                document.getElementById('zoom-in').addEventListener('click', () => this.zoom(1.2));
+                document.getElementById('zoom-out').addEventListener('click', () => this.zoom(0.8));
+                document.getElementById('zoom-reset').addEventListener('click', () => this.resetZoom());
+
+                // Popup events
+                document.getElementById('cancel-edit').addEventListener('click', () => this.hidePopup());
+                document.getElementById('save-node').addEventListener('click', () => this.saveNode());
+            }
+
+            setupToolbar() {
+                this.updateCursor();
+            }
+
+            updateCursor() {
+                const cursors = {
+                    'select': 'grab',
+                    'add-node': 'crosshair',
+                    'add-edge': 'pointer',
+                    'pan': 'grab'
+                };
+                this.canvas.style.cursor = cursors[this.tool] || 'default';
+            }
+
+            handleMouseDown(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left - this.offsetX) / this.scale;
+                const y = (e.clientY - rect.top - this.offsetY) / this.scale;
+
+                if (this.tool === 'select') {
+                    const node = this.findNodeAt(x, y);
+                    if (node) {
+                        this.selectedNode = node;
+                        this.isDragging = true;
+                        this.draggedNode = node;
+                        this.dragStartX = x;
+                        this.dragStartY = y;
+                    } else {
+                        this.selectedNode = null;
+                        this.hidePopup();
+                    }
+                } else if (this.tool === 'add-node') {
+                    const node = {
+                        id: 'node_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+                        text: 'New Node',
+                        x: x,
+                        y: y,
+                        color: this.nodeColor,
+                        fontSize: 16
+                    };
+                    this.nodes.push(node);
+                    this.updateNodeList();
+                    this.emitUpdate();
+                } else if (this.tool === 'add-edge') {
+                    if (!this.selectedNode) {
+                        const node = this.findNodeAt(x, y);
+                        if (node) {
+                            this.selectedNode = node;
+                        }
+                    } else {
+                        const targetNode = this.findNodeAt(x, y);
+                        if (targetNode && targetNode !== this.selectedNode) {
+                            const edge = {
+                                id: 'edge_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+                                source: this.selectedNode.id,
+                                target: targetNode.id
+                            };
+                            this.edges.push(edge);
+                            this.selectedNode = null;
+                            this.emitUpdate();
+                        }
+                    }
+                } else if (this.tool === 'pan') {
+                    this.isDragging = true;
+                    this.dragStartX = e.clientX;
+                    this.dragStartY = e.clientY;
+                }
+            }
+
+            handleMouseMove(e) {
+                if (!this.isDragging) return;
+
+                const rect = this.canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left - this.offsetX) / this.scale;
+                const y = (e.clientY - rect.top - this.offsetY) / this.scale;
+
+                if (this.tool === 'select' && this.draggedNode) {
+                    this.draggedNode.x = x;
+                    this.draggedNode.y = y;
+                    this.emitUpdate();
+                } else if (this.tool === 'pan') {
+                    const dx = e.clientX - this.dragStartX;
+                    const dy = e.clientY - this.dragStartY;
+                    this.offsetX += dx;
+                    this.offsetY += dy;
+                    this.dragStartX = e.clientX;
+                    this.dragStartY = e.clientY;
+                }
+            }
+
+            handleMouseUp() {
+                this.isDragging = false;
+                this.draggedNode = null;
+            }
+
+            handleWheel(e) {
+                e.preventDefault();
+                const zoom = e.deltaY < 0 ? 1.1 : 0.9;
+                this.zoom(zoom);
+            }
+
+            zoom(factor) {
+                this.scale *= factor;
+                this.scale = Math.max(0.1, Math.min(5, this.scale));
+            }
+
+            resetZoom() {
+                this.scale = 1;
+                this.offsetX = 0;
+                this.offsetY = 0;
+            }
+
+            findNodeAt(x, y) {
+                for (let i = this.nodes.length - 1; i >= 0; i--) {
+                    const node = this.nodes[i];
+                    const textWidth = this.ctx.measureText(node.text).width + 20;
+                    const textHeight = node.fontSize + 20;
+                    if (x >= node.x - textWidth / 2 && x <= node.x + textWidth / 2 &&
+                        y >= node.y - textHeight / 2 && y <= node.y + textHeight / 2) {
+                        return node;
+                    }
+                }
+                return null;
+            }
+
+            animate() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.ctx.save();
+                this.ctx.translate(this.offsetX, this.offsetY);
+                this.ctx.scale(this.scale, this.scale);
+
+                // Draw edges
+                this.edges.forEach(edge => {
+                    const sourceNode = this.nodes.find(n => n.id === edge.source);
+                    const targetNode = this.nodes.find(n => n.id === edge.target);
+                    if (sourceNode && targetNode) {
+                        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                        this.ctx.lineWidth = 2;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(sourceNode.x, sourceNode.y);
+                        this.ctx.lineTo(targetNode.x, targetNode.y);
+                        this.ctx.stroke();
+
+                        // Draw arrow
+                        const angle = Math.atan2(targetNode.y - sourceNode.y, targetNode.x - sourceNode.x);
+                        const arrowLength = 10;
+                        this.ctx.save();
+                        this.ctx.translate(targetNode.x, targetNode.y);
+                        this.ctx.rotate(angle);
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(0, 0);
+                        this.ctx.lineTo(-arrowLength, -arrowLength / 2);
+                        this.ctx.lineTo(-arrowLength, arrowLength / 2);
+                        this.ctx.closePath();
+                        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                        this.ctx.fill();
+                        this.ctx.restore();
+                    }
+                });
+
+                // Draw nodes
+                this.nodes.forEach(node => {
+                    const textWidth = this.ctx.measureText(node.text).width + 20;
+                    const textHeight = node.fontSize + 20;
+
+                    // Node background
+                    this.ctx.fillStyle = node.color;
+                    this.ctx.strokeStyle = node === this.selectedNode ? '#ffffff' : 'rgba(255, 255, 255, 0.3)';
+                    this.ctx.lineWidth = node === this.selectedNode ? 3 : 1;
+                    this.ctx.beginPath();
+                    this.ctx.roundRect(node.x - textWidth / 2, node.y - textHeight / 2, textWidth, textHeight, 10);
+                    this.ctx.fill();
+                    this.ctx.stroke();
+
+                    // Node text
+                    this.ctx.fillStyle = 'white';
+                    this.ctx.font = `${node.fontSize}px Arial`;
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillText(node.text, node.x, node.y);
+                });
+
+                this.ctx.restore();
+                requestAnimationFrame(() => this.animate());
+            }
+
+            updateNodeList() {
+                const nodeList = document.getElementById('node-list');
+                nodeList.innerHTML = '';
+                this.nodes.forEach(node => {
+                    const li = document.createElement('li');
+                    li.textContent = node.text;
+                    li.className = node === this.selectedNode ? 'active' : '';
+                    li.onclick = () => {
+                        this.selectedNode = node;
+                        this.showPopup(node);
+                    };
+                    const meta = document.createElement('div');
+                    meta.className = 'node-meta';
+                    meta.textContent = `ID: ${node.id.substring(0, 12)}...`;
+                    li.appendChild(meta);
+                    nodeList.appendChild(li);
+                });
+            }
+
+            showPopup(node) {
+                const popup = document.getElementById('node-popup');
+                const textArea = document.getElementById('node-text');
+                textArea.value = node.text;
+                popup.classList.remove('hidden');
+                popup.style.left = '50%';
+                popup.style.top = '50%';
+                popup.style.transform = 'translate(-50%, -50%)';
+            }
+
+            hidePopup() {
+                document.getElementById('node-popup').classList.add('hidden');
+            }
+
+            saveNode() {
+                if (this.selectedNode) {
+                    const textArea = document.getElementById('node-text');
+                    this.selectedNode.text = textArea.value;
+                    this.updateNodeList();
+                    this.emitUpdate();
+                    this.hidePopup();
+                }
+            }
+
+            createMindMap() {
+                const name = document.getElementById('mindmap-name').value;
+                if (!name) {
+                    alert('Please enter a mind map name');
+                    return;
+                }
+                this.mindMapId = 'mindmap_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                this.nodes = [];
+                this.edges = [];
+                this.updateNodeList();
+                this.socket.emit('create-mindmap', {
+                    mindMapId: this.mindMapId,
+                    mindMap: { nodes: this.nodes, edges: this.edges }
+                });
+                this.socket.emit('join-mindmap', this.mindMapId);
+                alert(`Created mind map: ${name} (ID: ${this.mindMapId})`);
+            }
+
+            loadMindMap() {
+                const name = document.getElementById('mindmap-name').value;
+                if (!name) {
+                    alert('Please enter a mind map name or ID');
+                    return;
+                }
+                this.mindMapId = name;
+                this.socket.emit('join-mindmap', this.mindMapId);
+            }
+
+            saveMindMap() {
+                if (!this.mindMapId) {
+                    alert('Please create or load a mind map first');
+                    return;
+                }
+                this.emitUpdate();
+                alert('Mind map saved!');
+            }
+
+            emitUpdate() {
+                if (!this.mindMapId) return;
+                this.socket.emit('update-mindmap', {
+                    mindMapId: this.mindMapId,
+                    mindMap: { nodes: this.nodes, edges: this.edges }
+                });
+            }
+
+            exportPDF() {
+                if (this.nodes.length === 0) {
+                    alert('No nodes to export');
+                    return;
+                }
+
+                // Generate HTML for PDF
+                let nodesHtml = '';
+                this.nodes.forEach(node => {
+                    nodesHtml += `<div style="background: ${node.color}; color: white; padding: 15px; margin: 10px; border-radius: 8px; display: inline-block; min-width: 150px;">${node.text}</div>`;
+                });
+
+                let edgesHtml = '';
+                this.edges.forEach(edge => {
+                    const sourceNode = this.nodes.find(n => n.id === edge.source);
+                    const targetNode = this.nodes.find(n => n.id === edge.target);
+                    if (sourceNode && targetNode) {
+                        edgesHtml += `<li>${sourceNode.text} → ${targetNode.text}</li>`;
+                    }
+                });
+
+                const htmlContent = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Mind Map Export</title>
+                        <style>
+                            body { font-family: Arial, sans-serif; padding: 20px; }
+                            h1 { color: #333; }
+                            .nodes { display: flex; flex-wrap: wrap; }
+                            .node { background: #ff7e5f; color: white; padding: 15px; margin: 10px; border-radius: 8px; }
+                            .connections { margin-top: 30px; }
+                            .connections ul { list-style-type: none; }
+                            .connections li { padding: 5px 0; border-bottom: 1px solid #eee; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>Mind Map Export</h1>
+                        <h2>Nodes</h2>
+                        <div class="nodes">
+                            ${nodesHtml}
+                        </div>
+                        <div class="connections">
+                            <h2>Connections</h2>
+                            <ul>
+                                ${edgesHtml}
+                            </ul>
+                        </div>
+                    </body>
+                    </html>
+                `;
+
+                // Use the generate_pdf function
+                fetch('/export-pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ html: htmlContent })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('PDF exported successfully!');
+                    }
+                })
+                .catch(err => {
+                    console.error('Export error:', err);
+                    alert('Export failed. Check console for details.');
+                });
+            }
+
+            readAloud() {
+                if (this.nodes.length === 0) {
+                    alert('No nodes to read');
+                    return;
+                }
+
+                // Collect all node texts
+                const texts = this.nodes.map(n => n.text);
+                const fullText = texts.join('. ');
+
+                // Use the generate_speech function
+                fetch('/read-aloud', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: fullText })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Speech generated! Playing audio...');
+                        const audio = new Audio('/speech.wav');
+                        audio.play();
+                    }
+                })
+                .catch(err => {
+                    console.error('TTS error:', err);
+                    alert('Text-to-speech failed. Check console for details.');
+                });
+            }
+
+            saveToGitHub() {
+                if (this.nodes.length === 0) {
+                    alert('No nodes to save');
+                    return;
+                }
+
+                // This would integrate with GitHub API
+                const mindMapData = {
+                    name: document.getElementById('mindmap-name').value || 'mindmap',
+                    nodes: this.nodes,
+                    edges: this.edges,
+                    timestamp: new Date().toISOString()
+                };
+
+                // For demo, we'll just show a message
+                alert('Save to GitHub feature would open GitHub OAuth flow and save the mind map as a JSON file to your repository.');
+                console.log('Mind map data:', JSON.stringify(mindMapData, null, 2));
+            }
+        }
+
+        // Initialize the app
+        const app = new MindMapApp();
+    </script>
+</body>
+</html>
